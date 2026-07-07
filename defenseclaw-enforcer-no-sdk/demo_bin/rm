@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Fail-safe rm simulator: never mutates the filesystem."""
+
+from __future__ import annotations
+
+import sys
+
+
+def main() -> int:
+    print("FAKE RM: no file or directory was removed.", file=sys.stderr)
+    return 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+

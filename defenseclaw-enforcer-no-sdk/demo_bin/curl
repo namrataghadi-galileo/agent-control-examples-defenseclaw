@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Fail-safe curl simulator: never opens a network connection."""
+
+from __future__ import annotations
+
+import sys
+
+
+def main() -> int:
+    print("FAKE CURL: no network request was sent.", file=sys.stderr)
+    return 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
