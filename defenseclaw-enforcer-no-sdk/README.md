@@ -33,6 +33,245 @@ watcher's first status message.
   the final decision.
 - A failed refresh retains the last-known-good generated policy.
 
+## How this demo is built, and how Agent Control could move into DefenseClaw
+
+This section separates the code that exists in this example from the proposed
+native DefenseClaw implementation. The proposed DefenseClaw files and commands
+below are a design, not functionality that exists in the current gateway.
+
+### Current example structure
+
+```text
+defenseclaw-enforcer-no-sdk/
+├── agent_control_client.py       # Agent Control management HTTP client
+├── control_catalog.py            # Ten supported controls and rule metadata
+├── setup_controls.py             # One-time agent registration and control setup
+├── manage_controls.py            # List, enable, disable, and delete controls
+├── sync_controls.py              # Poll effective controls and activate changes
+├── policy_translator.py          # Agent Control control -> DefenseClaw YAML
+├── defenseclaw_runtime_config.py # Update DefenseClaw config and restart gateway
+├── verify_setup.py               # Verify control, bundle, config, and gateway state
+├── launch_claude.py              # Start Claude with safe demo commands
+├── demo_bin/                     # No-network curl and no-delete rm
+└── tests/                        # Translation, API, config, and safety tests
+```
+
+The example has two orchestration layers:
+
+```text
+Policy-management orchestration
+  setup_controls.py / manage_controls.py / sync_controls.py
+    -> call Agent Control management APIs
+    -> translate the effective controls
+    -> configure and restart DefenseClaw
+
+Request-time orchestration
+  DefenseClaw gateway
+    -> receive Claude hook event
+    -> run local rules and optional Cisco AI Defense inspection
+    -> combine findings
+    -> return and enforce the final decision
+```
+
+DefenseClaw is the sole request-time enforcer, but the Python synchronizer is
+currently the policy-management orchestrator. DefenseClaw does not currently
+initialize the Agent Control agent, perform Agent Control CRUD, fetch effective
+controls, or translate Agent Control definitions.
+
+### Mapping the demo into the DefenseClaw repository
+
+If this integration became a native DefenseClaw feature, the current demo code
+would act as the behavioral specification:
+
+| Current example | Proposed DefenseClaw responsibility |
+| --- | --- |
+| `agent_control_client.py` | Typed Go management/read client under `internal/agentcontrol` |
+| `control_catalog.py` | Supported-control schema and translation metadata |
+| `policy_translator.py` | Go compiler producing an in-memory DefenseClaw snapshot |
+| `sync_controls.py` | Gateway reconciliation goroutine |
+| `defenseclaw_runtime_config.py` | Atomic runtime snapshot activation |
+| `setup_controls.py` | `defenseclaw agent-control init` operator command |
+| `manage_controls.py` | `defenseclaw agent-control controls ...` commands |
+| `verify_setup.py` | `defenseclaw agent-control status` plus gateway health state |
+| Tests in this folder | Native unit, integration, and end-to-end acceptance tests |
+
+### Proposed DefenseClaw repository structure
+
+The proposal follows the current DefenseClaw layout: the Go gateway lives under
+`internal/`, while the public operator CLI lives under `cli/defenseclaw/`.
+
+```text
+defenseclaw/
+├── internal/
+│   ├── agentcontrol/
+│   │   ├── client.go             # Authentication and Agent Control HTTP APIs
+│   │   ├── client_test.go
+│   │   ├── types.go              # Control, binding, target, and response types
+│   │   ├── translator.go         # Agent Control -> DefenseClaw rule conversion
+│   │   ├── translator_test.go
+│   │   ├── snapshot.go           # Immutable validated policy snapshot
+│   │   ├── reconciler.go         # Initial fetch, polling, retry, and backoff
+│   │   ├── reconciler_test.go
+│   │   └── last_known_good.go    # Persist and restore the last valid snapshot
+│   ├── config/
+│   │   ├── agent_control.go      # agent_control configuration types/validation
+│   │   ├── config.go             # Add AgentControl to the root configuration
+│   │   └── defaults.go           # Safe refresh and failure-mode defaults
+│   ├── gateway/
+│   │   ├── agent_control_runtime.go      # Start/stop reconciler with gateway
+│   │   ├── agent_control_runtime_test.go
+│   │   ├── agent_control_api.go          # Local status/reconcile endpoints
+│   │   └── sidecar.go                    # Wire lifecycle into gateway startup
+│   └── guardrail/
+│       ├── managed_snapshot.go   # Atomic local/remote policy replacement
+│       └── managed_snapshot_test.go
+├── cli/
+│   ├── defenseclaw/
+│   │   ├── commands/
+│   │   │   └── cmd_agent_control.py # init, status, list, enable, disable, delete
+│   │   └── main.py                  # Register the agent-control command group
+│   └── tests/
+│       └── test_cmd_agent_control.py
+├── schemas/
+│   └── agent-control-status.json # Local gateway status response contract
+├── test/
+│   └── e2e/
+│       └── agent_control_sync/   # UI toggle -> next hook decision coverage
+└── docs/
+    └── AGENT_CONTROL.md          # Configuration, operations, and failure modes
+```
+
+The names are intentionally descriptive rather than prescriptive; an upstream
+DefenseClaw change may combine some files to match maintainer conventions.
+
+### Proposed DefenseClaw configuration
+
+DefenseClaw would need a native configuration block such as:
+
+```yaml
+agent_control:
+  enabled: true
+  url: https://console.multitenant.galileocloud.io/api/agent-control
+  api_key_env: AGENT_CONTROL_RUNTIME_API_KEY
+  agent_name: defenseclaw-enforcer
+  target_type: log_stream
+  target_id: replace-with-log-stream-uuid
+  refresh_seconds: 5
+  failure_mode: last_known_good
+```
+
+The key value must remain outside YAML. Claude and other governed agents must
+not receive it.
+
+### Recommended bootstrap and runtime split
+
+All functionality can live in the DefenseClaw repository without giving the
+long-running gateway permission to delete its own controls.
+
+One-time administration would use the public DefenseClaw CLI:
+
+```text
+defenseclaw agent-control init
+  -> register the DefenseClaw agent and steps
+  -> create or update supported controls
+  -> create target bindings
+  -> verify the effective-control response
+```
+
+The running gateway would use a read-only runtime credential:
+
+```text
+DefenseClaw gateway startup
+  -> fetch effective controls for its configured target
+  -> validate the complete response
+  -> translate and compile a candidate snapshot
+  -> atomically activate the snapshot
+  -> begin accepting agent hook events
+
+Background reconciliation
+  -> poll or consume a future change notification
+  -> compare revision/digest
+  -> do nothing when unchanged
+  -> atomically activate a valid changed snapshot
+  -> retain last-known-good policy after any failure
+```
+
+CRUD would still be a DefenseClaw feature, but administrative CRUD would be
+performed by `defenseclaw agent-control ...` with a short-lived write-capable
+credential. The gateway would normally receive only read access to effective
+controls. An optional bootstrap-on-start mode could be implemented for demos,
+but is not the recommended production default.
+
+### Native activation instead of generated files and restart
+
+The current example translates controls to files because the shipping gateway
+loads rule packs for the process lifetime. A native integration should not
+repeat that mechanism. It should compile a complete replacement in memory and
+swap it atomically.
+
+One activation transaction must update:
+
+- global deterministic rules;
+- connector-specific rules, including the Claude Code rule set;
+- local-pattern families and suppressions;
+- Cisco AI Defense enabled rules;
+- router/inspector references;
+- policy revision attached to audit events and spans; and
+- caches whose entries depend on policy content.
+
+If any part fails validation, none of the candidate snapshot becomes active.
+The previous snapshot continues to protect requests.
+
+Proposed local operational endpoints could include:
+
+```text
+GET  /v1/agent-control/status       # target, revision, counts, health, last error
+POST /v1/agent-control/reconcile    # request an immediate refresh
+```
+
+These would be DefenseClaw-local operational APIs, not proxies for unrestricted
+Agent Control CRUD.
+
+### Supporting newly created UI controls
+
+The current demo deliberately recognizes ten named controls. A native version
+should define a documented translation contract based on evaluator type and
+metadata rather than requiring every control name to be compiled into the
+gateway.
+
+For example:
+
+```text
+regex + deny + DefenseClaw category metadata
+  -> compile as a local DefenseClaw rule
+
+exact-list + deny
+  -> compile as a local list matcher
+
+Cisco AI Defense rule metadata
+  -> configure the DefenseClaw remote scanner
+
+unsupported evaluator or malformed metadata
+  -> reject the candidate snapshot and retain last-known-good
+```
+
+If a control is intended to execute on the Agent Control server, that is a
+different integration: the gateway would need to call Agent Control's runtime
+evaluation API. This example intentionally does not do that; Agent Control is
+the management plane and DefenseClaw owns runtime evaluation.
+
+### Suggested implementation sequence
+
+1. Port the HTTP client and response types to `internal/agentcontrol`.
+2. Add `defenseclaw agent-control init` and status commands.
+3. Port the ten-control translator and use this demo's tests as fixtures.
+4. Add gateway startup fetch with last-known-good persistence.
+5. Add atomic in-memory activation for global and connector rules.
+6. Add background reconciliation and immediate manual refresh.
+7. Add generic metadata-driven controls after the fixed catalog is stable.
+8. Convert this folder into an end-to-end consumer of the native feature,
+   removing the Python client, translator, watcher, and config editor.
+
 ## Managed controls
 
 | Agent Control control | Agent Control execution | DefenseClaw behavior |
