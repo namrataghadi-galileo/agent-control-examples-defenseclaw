@@ -1,0 +1,27 @@
+[project]
+name = "agentcontrol-raw-demo"
+version = "0.1.0"
+description = "Streamlit demo for Agent Control command blocking and transfer steering"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-control-engine",
+    "agent-control-evaluators",
+    "agent-control-models",
+    "agent-control-sdk",
+    "agent-control-telemetry",
+    "streamlit>=1.40,<2",
+]
+
+[tool.uv.sources]
+agent-control-engine = { path = "../../agent-control/engine", editable = true }
+agent-control-evaluators = { path = "../../agent-control/evaluators/builtin", editable = true }
+agent-control-models = { path = "../../agent-control/models", editable = true }
+agent-control-sdk = { path = "../../agent-control/sdks/python", editable = true }
+agent-control-telemetry = { path = "../../agent-control/telemetry", editable = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

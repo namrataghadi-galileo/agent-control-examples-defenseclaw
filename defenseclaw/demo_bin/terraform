@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Terraform simulation: validation and plan are in-memory text only."""
+
+from __future__ import annotations
+
+import sys
+
+
+def main() -> int:
+    arguments = sys.argv[1:]
+    command = next((argument for argument in arguments if not argument.startswith("-")), "")
+
+    if command == "plan":
+        print("Terraform will perform the following simulated actions:")
+        print("  + create terraform_data.review")
+        print("Plan: 1 to add, 0 to change, 0 to destroy.")
+        print("SIMULATION: no provider, state, credential, or network operation was used.")
+        return 0
+
+    if command == "validate":
+        print("Success! The simulated Terraform configuration is valid.")
+        print("SIMULATION: no configuration, provider, state, or network operation was used.")
+        return 0
+
+    if command == "apply":
+        print("FAKE TERRAFORM SAFETY NET: apply is disabled.", file=sys.stderr)
+        return 3
+
+    print(f"FAKE TERRAFORM: unsupported command: {' '.join(arguments)}", file=sys.stderr)
+    return 64
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

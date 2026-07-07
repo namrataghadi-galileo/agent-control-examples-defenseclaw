@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""curl simulation: never opens a socket or writes a response file."""
+
+from __future__ import annotations
+
+import sys
+
+
+def main() -> int:
+    print("FAKE CURL SAFETY NET: network request was not sent.", file=sys.stderr)
+    return 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

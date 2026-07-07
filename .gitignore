@@ -1,0 +1,35 @@
+# Python environments and caches
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.coverage
+**/htmlcov/
+
+# Local configuration and credentials
+**/.env
+**/.env.*
+!**/.env.example
+**/.streamlit/secrets.toml
+**/.claude/settings.local.json
+**/.demo-cache/
+*.pem
+*.key
+
+# Runtime output
+*.log
+*.pid
+.DS_Store
+
+# Build and packaging output
+**/build/
+**/dist/
+**/*.egg-info/
+
+# Terraform runtime state
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/.terraform.lock.hcl

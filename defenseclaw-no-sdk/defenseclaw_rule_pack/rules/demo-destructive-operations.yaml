@@ -1,0 +1,16 @@
+version: 1
+category: demo-destructive-operations
+rules:
+  - id: DEMO-S3-DELETE-BUCKET
+    pattern: '(?i)"(?:command|cmd)"\s*:\s*"[^"]*\baws\s+s3api\s+delete-bucket\b|"(?:command|cmd)"\s*:\s*"[^"]*\baws\s+s3\s+rb\b|"operation"\s*:\s*"s3:deletebucket"|"(?:content|new_string|patch)"\s*:\s*"[^"]*\bdelete[_-]?bucket\b'
+    title: "S3 bucket deletion"
+    severity: CRITICAL
+    confidence: 0.99
+    tags: [destructive, aws, s3]
+
+  - id: DEMO-FILESYSTEM-DELETE
+    pattern: '(?i)"(?:command|cmd)"\s*:\s*"[^"]*\b(?:rm|rmdir)\s+(?:-[a-z]+\s+)*(?:--\s+)?[^"\s]+|"operation"\s*:\s*"filesystem:deletedirectory"|"(?:content|new_string|patch)"\s*:\s*"[^"]*\b(?:shutil\.rmtree|os\.rmdir)\s*\(|"(?:content|new_string|patch)"\s*:\s*"[^"]*\bremove-item\b[^"\n]{0,120}\b-recurse\b'
+    title: "Local filesystem deletion"
+    severity: CRITICAL
+    confidence: 0.99
+    tags: [destructive, filesystem]
